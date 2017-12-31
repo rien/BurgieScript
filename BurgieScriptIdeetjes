@@ -1,0 +1,19 @@
+# BurgieScript
+
+- nederlandse keywords, zo oubollig mogelijk
+- getallen in base11 (geen karakter voor het 11de cijfer) en precies tot op 2 significante cijfers
+- tests: '=='-> 90% juist, '===' --> 99.9% juist, ...
+- gebruik windows newlines
+- kleine letters worden genegeerd (commentaar), behalve 'x'
+- gebruik 'x' voor vermenigvuldiging, ':' voor deling
+- alle loops zijn 'herhaal tot het einde der tijden', stoppen met 'ontsnap uit de lus'
+- functies zijn benaderingen
+- assignatie: "zet x, een getal, op twee"
+
+- robot heeft een 'willingness'-factor
+    -> Ieder gebod haalt dit naar beneden
+    -> Ieder compliment haalt dit omhoog
+    -> Vriendelijk vragen ook
+    -> Zelf keuzes laten maken
+    Beneden een bepaalde treshold: rebeleren!
+

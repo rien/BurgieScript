@@ -1,0 +1,15 @@
+
+GA VOORUIT TOT EEN WE EEN OBJECT TEGENKOMEN EN SLA DAN LINKS AF
+
+Zet VariabeleEen, een getal, op 100.
+Zet Index, een boolese waarde, op Waar.
+
+Gedurende Index KleinerDan VariabeleEen
+\
+ Chauffeer Voorwaarts!
+ Zet AfstandObject, een getal, op GeluidWeerkaatsingsApparaatWaarde?
+ Tenzij AfstandObject groterDan 100
+ \
+  Chauffeer Te Linkerzijde!1!!
+ /
+/

@@ -1,0 +1,46 @@
+(* BurgieScript EBNF *)
+
+(* Statements *)
+<block>             = "\" <body> "/"
+<body>              = { <statement> }
+<statement>         = <loop> | <conditional> | <command> | <assignment>
+                    | <comment>
+<loop>              = "Gedurende" <expr> "doe:" <block>
+<conditional>       = "Indien" <expr> "doe:" <block>
+                    [ "Anderzijds:" <block>]
+<assignment>        = "Zet variabele" <variable> "op" <expr> "."
+<comment>           = "Terzijde:"  <character> ("." | "?" | "!")
+<command>           = ( <motor> | <sound> | <light> | <sleep> ) "!"
+
+
+(* Commando's *)
+<motor>             = "Halt" | "Chauffeer" <direction>
+<sound>             = "Zing" <duration> "een" <note>
+<light>             = "Kleur" <color> <side>
+<sleep>             = "Rust kort" | "Neem op je gemak een pauze"
+                    | "Sluit je ogen maar voor even"
+                    | "Droom zacht zoete prins"
+
+<direction>         = "rugwaarts" | "voorwaarts" | "te" <side>
+<side>              = "bakboordzijde" | "stuurboordzijde"
+<duration>          = "kortstondig" | "eventjes" | "langdurig"
+                    | "erg langdurig"
+<note>              = "do" | "re" | "mi" | "fa" | "sol" | "la" | "si"
+<color>             = "rood" | "groen" | "blauw" | "wit"
+
+(* Expressies *)
+<expr>              = <comp> [{ <compop> <comp> }]
+<compop>            = "overeenkomstig met" | "verschillend met"
+                    | "significanter dan" | "minder significant dan"
+<comp>              = <term> [{ <termop> <term> }]
+<termop>            = "+" | "-"| "hetzij"
+<term>              = <fact> [{ <factop> <fact> }]
+<factop>            = "x" | ":" | "tevens"
+<fact>              = [ "-" "allesbehalve" ] <base>
+<base>              = <literalbool> | <literalnum> | "(" <expr> ")"
+                    | <query> | <variable>
+<literalbool>       = "waarachtig" | "strijdig"
+<literalnum>        = { <digit> } [ "," { <digit> } ]
+<query>             = "GeluidWeerkaatsingsApparaatWaarde"
+                    | "LijnVolgApparaatIsWit" <side>
+<variable>          = { <letter> }

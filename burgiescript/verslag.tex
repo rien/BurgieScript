@@ -1,0 +1,333 @@
+
+\documentclass[11pt]{article}
+\author{Rien Maertenis\\3\textsuperscript{de} Bachelor Informatica}
+\title{Project Functioneel Programmeren:\\Parser voor een MBot-programmeertaal:\\\textbf{BurgieScript}}
+\date{16 januari 2017}
+\usepackage[a4paper]{geometry}
+\usepackage[dutch]{babel}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{enumitem}
+\usepackage{float}
+\usepackage{color}
+\usepackage{hyperref}
+\usepackage{listings}
+\setlength{\parindent}{1em}
+\setlength{\parskip}{1em}
+\interfootnotelinepenalty=10000
+\begin{document}
+\lstset{ %
+    numbers=left,
+    basicstyle=\footnotesize\ttfamily\fontseries{l}\selectfont,
+    keywordstyle=\fontseries{b}\selectfont,
+    commentstyle=\itshape,
+    numberstyle=\tiny,
+    extendedchars=false,
+    frame=single,
+    keepspaces=true,
+    showstringspaces=false,
+    keepspaces=true,
+    breaklines=true,
+    title=\textbf{\lstname}
+}
+\lstdefinelanguage{Haksell}{ %
+    morekeywords={import, module, do, if, then, else, case, of, where, let,
+    in, class, instance, data, default, deriving, infix, infixl, infixr,
+    newtype, type, as},
+    morecomment=[l]{--}
+}
+\maketitle
+
+Op het moment van indienen (zondagavond 15 januari) staat de MBot-patch met de toegevoegde \texttt{playNote} functie nog niet online op Hackage. Daarom is het bestand \texttt{MBot.hs} meegeleverd in het zip bestand. Zodra de patch online staat volstaat het normaal gezien om de MBot-package toe te voegen aan het cabal bestand.
+
+\section{Inleinding}
+Voor dit project heb ik de \textit{BurgieScript} programmeertaal uitgevonden.
+Het is een knipoog naar het stereotype van een burgerlijk ingenieur.
+Natuurlijk is de taal volledig in het Nederlands, gebaseerd op de taal gebruikt
+in cursussen gegeven door Burgerlijk ingenieur-professoren en door een document
+met Nederlandstalige Computertermen
+\footnote{\url{https://www.elis.ugent.be/node/285}} van de vakgroep ELIS aan de UGent.
+Schrik dus niet als u termen tegekomt zoals \textit{OntleedFout} (\textit{ParseError}).
+Het grootste deel van de code waarin de parser geschreven is, is natuurlijk wel
+in gewoon Engels geschreven. Kwestie van het mezelf ook niet té moeilijk te maken.
+
+De programmeertaal is grotendeels gebaseerd op pseudocode. Maar als keywords heb ik oubolige en lange woorden gebruikt. Daarnaast zult u ook enkele designkeuzes in de programmeertaal zelf tegenkomen die
+enkele vraagtekens zullen oproepen. Ook deze dienen met een grove korrel zout genomen te worden. Ik ben heus niet écht overtuigd dat \texttt{\symbol{92}} en
+\texttt{/} een goed alternatief zijn voor \texttt{\{} en \texttt{\}} om blokken
+code aan te duiden. Maar wees gerust, in tegenstelling tot \textit{BurgieScript}
+heb ik geprobeerd om mijn Haskell-code zo consistent en overzichtelijk mogelijk
+te schrijven.
+
+\section{Syntax}
+Hieronder kunt u de syntax van \textit{BurgieScript} vinden in EBNF\footnote{\url{https://en.wikipedia.org/wiki/Extended_Backus\%E2\%80\%93Naur_form}}-achtige vorm: \texttt{(...)} stelt een groep voor, \texttt{[...]} is optioneel en alles tussen \texttt{\{...\}} kan herhaald worden. Er wordt geen gebruik gemaakt van aaneenschakelende komma's of terminerende puntkomma's.
+\lstinputlisting{BurgieScript.bnf}
+
+Nog een opmerking: \textit{BurgieScript} legt geen verplichtingen op hoe de code geformatteerd moet worden. Hoewel er aanbevolen wordt om ieder statement op een nieuwe lijn te zetten en de statements in de blokken te indenteren, is dit helemaal niet noodzakelijk. Sterker nog: behalve enkele speciale gevalen (een spatie na een variabelenaam en tussen vergelijkingsoperatoren) mogen newlines, spaties, tabs en andere whitespace-karakters achterwege gelaten worden. Dit is bijvoorbeeld een volledig correct programma:
+\lstset{numbers=none}
+\begin{lstlisting}
+GedurendeLijnVolgApparaatIsWitteBakboordzijdedoe:\Chauffeerrugwaarts!/
+\end{lstlisting}
+Maar ik raad u af om zo'n programma's te schrijven.
+
+\section{Semantiek}
+Eerst en vooral begin ik met het opdelen van alle constructies in drie onderdelen:
+statements die de \textit{flow} van een programma bepalen, commando's die de MBot aansturen en expressies die mathematische en booleaanse waarden verwerken en opvragen. In de code is voor elke categorie een eigen parser en evaluator voorzien. Deze opdeling is puur om de Haskell-bestanden niet te lang te maken en ze overzichtelijk te houden.
+\subsection{Statements}
+In de programmeertaal zijn er vijf soorten statements die hieronder worden opgesomd. Een blok statements wordt gebruikt bij de conditionele uitvoering en lussen. Een blok begint met een \texttt{\symbol{92}}, gevolgd door de statements die tot dit blok behoren (een blok mag ook leeg zijn), afgesloten door een \texttt{/}. Om esthetische redenen wordt aanbevolen om de statements in een blok met één spatie te indenteren.
+\begin{description}
+    \item{\bf Commentaar} begint met het keyword \texttt{Terzijde:} en eindigt bij het volgende punt, vraagteken of uitroepteken. Commentaar heeft geen invloed op de evaluatie.
+    \begin{lstlisting}
+    Terzijde: Dit is commentaar.
+    Terzijde: En dit ook?
+    Terzijde: Jazeker!\end{lstlisting}
+
+    \item{\bf Assignatie} van de waarde van een expressie aan een variabele wordt gedaan met de zin \texttt{Zet variabele <naam> op <expr>.} (inclusief de punt op het einde). Na de evaluatie van dit statement kan de variabele gebruikt worden in expressies. Geldige variabelenamen bestaan uit één of meerdere alfabetische karakters en moeten gevolgd worden door een spatie, newline of ander whitespace-karakter.
+    \begin{lstlisting}
+    Zet variabele antwoord op 41 + 1.
+    Zet variabele vals op strijdig.\end{lstlisting}
+
+\item{\bf Conditionele uitvoering} van statements gebeurt door te beginnen met \texttt{Indien <expr> doe:} en daarna de statments die moeten uitgevoerd worden als de expressie geldig is. Optioneel kan daarna nog \texttt{Anderzijds:} komen, gevolgd door een blok dat moet uitgevoerd worden wanneer de expressie niet geldig is.
+    \begin{lstlisting}
+    Indien waarachtig doe:
+    \
+     Chauffeer te bakboordzijde!
+    /
+    Anderzijds:
+    \
+     Chauffeer te stuurboordzijde!
+    /\end{lstlisting}
+    \item{\bf Lussen} worden op dezelfde manier verkregen als de conditionele blokken, maar dan beginnend met \texttt{Gedurende <expr> doe:} gevolgd door een blok.
+    \begin{lstlisting}
+    Terzijde: programma-executie kan vroegtijdig afgebroken worden doormiddel van Control-C.
+    Zet variabele overflow op 0.
+    Gedurende overflow + 1 significanter dan 0 doe:
+    \
+     Zet variabele overflow op overflow + 1.
+    /\end{lstlisting}
+    \item{\bf Commando's} die kunnen gebruikt worden om de MBot aan te sturen. Deze worden besproken in de volgende subsectie.
+\end{description}
+
+\subsection{Commando's}
+Deze worden gebruikt om de MBot aan te sturen. Commando-statements eindigen allemaal met een uitroepingsteken. De programmeur heeft keuze tussen de volgende 'bevelen':
+\begin{description}
+    \item{\bf Motor} commando's worden gebruikt om de motor van de MBot aan te sturen. Een motorcommando begint met \texttt{Chauffeer} en wordt gevolgd door een richting. Om de MBot te stoppen kunt u het commando \texttt{Halt!} gebruiken.
+   \begin{lstlisting}
+    Chauffeer voorwaarts!
+    Chauffeer rugwaarts!
+    Chauffeer te bakboordzijde!
+    Chauffeer te stuurboordzijde!
+    Halt!\end{lstlisting}
+\item{\bf Ledjes} kunnen een rood, groen, blauw of wit kleuren en uitgeschakeld worden.
+    \begin{lstlisting}
+    Kleur rood te bakboordzijde.
+    Kleur blauw te stuurboordzijde.
+    Verduister te bakboordzijde.
+    Verduister te stuurboordzijde.\end{lstlisting}
+\item{\bf Slapen}. De robot kan enkele momenten niets doen door de volgende slaap-commando's uit te voeren. Merk op dat de MBot wel nog blijft verder rijden indien een motorcommando werd uitgevoerd. Geordend van kort naar lang:
+    \begin{lstlisting}
+    Rust kort!
+    Neem op je gemak een pauze!
+    Sluit je ogen maar voor even!
+    Droom zacht zoete prins!\end{lstlisting}
+\item{\bf Zingen} behoort ook tot de mogelijkheden van de MBot, met een gepatchte MBot-bibliotheek kan de MBot een volledige toonladder afspelen. Muzieknoten afspelen met de ingebouwde buzzer kan als volgt:
+    \begin{lstlisting}
+    Zing eventjes een sol.
+    Zing erg langdurig een do.\end{lstlisting}
+\end{description}
+\subsection{Expressies}
+De voorbeeld-parser uitgewerkt in de slides is niet zo flexibel: de gebruiker is verplicht haakjes te gebruiken voor iedere operatie. Om op een flexibelere manier wiskundige expressies te parsen heb ik mij gebaseerd op de paper/tutorial \textit{Monadic Parsing in Haskell}\footnote{\url{http://www.cs.nott.ac.uk/~pszgmh/pearl.pdf}}. Meer info over hoe expressies precies geparsed worden kunt u in de sectie met uitleg over de implementatie lezen.
+
+\subsubsection{Het typesysteem}
+\textit{BurgieScript} kent twee types in zijn expressies: boolese waarden en nummers. Intern worden deze beide voorgesteld als numers, maar iedere waarde is gemerkt met één van de twee types. Tijdens het parsen wordt niet gekeken naar dit type, maar wanneer je een bijvoorbeeld een optelling probeert uit te voeren op twee boolese waarden krijg je een \texttt{TypeFout} tijdens de uitvoering. Meer info krijgt u later.
+
+\subsubsection{Wat kan er allemaal gebruikt worden in expressies?}
+    \begin{description}
+        \item{\bf Literalen:} de boolese literalen zijn \texttt{waarachtig} en \texttt{strijdig}. Een nummer wordt voorgesteld door een opeenvolging van cijfers, al dan niet gevolgd door een komma en een nieuwe opvolging van cijfers die de fractie van een kommagetal voorstellen.
+        \item{\bf Variabelen:} iedere opeenvolging van alfabetische karakters gevolgd door een spatie wordt als variabele gezien (tenzij woorden die een andere betekenis hebben, zoals \texttt{waarachtig} en \texttt{GeluidWeerkaatsingsApparaatMeetwaarde}.
+        \item{\bf Haakjes:} haakjes kunnen ook gebruikt worden. Alles binen de haakjes wordt eerst uitgewerkt.
+        \item{\bf Opvragingen:} deze gaan een waarde opvragen aan de robot. De drie opvragingen zijn:
+        \begin{lstlisting}
+    LijnVolgApparaatIsWit te bakboordzijde      -> boolese waarde
+    LijnVolgApparaatIsWit te stuurboordzijde    -> boolese waarde
+    GeluidWeerkaatsingsApparaatWaarde           -> numerieke waarde\end{lstlisting}
+\end{description}
+
+\subsubsection{Wat kan je allemaal doen?}
+U kunt de gegeven voorbeelden zelf uitvoeren door een interactieve sessie te starten en de string die u wilt parsen en evalueren mee te geven met de \texttt{execExp} functie:
+        \begin{lstlisting}
+        execExp "1 + 1"
+        > Right (2.0, NumT)
+        execExp "waarachtig tevens strijdig"
+        > Right (0.0, BoolT)\end{lstlisting}
+
+Zoals vermeld kan \textit{BurgieScript} relatief ingewikkelde wiskundige expressies verwerken die worden uitgevoerd zoals je zou verwachten. Enkele voorbeelden:
+\begin{description}
+    \item{\bf Deling en multiplicatie:}
+        Voor deling en multiplicatie wordt er gebruik gemaakt van de symbolen \texttt{x} en \texttt{:} .
+        \begin{lstlisting}
+        1 : 3 -> 0.333333
+        3 x 2 -> 6\end{lstlisting}
+    \item{\bf Volgorde van bewerkingen:} er wordt correct omgegaan met precedentie, zowel bij nummers als booleans. Ook kunnen meerdere dezelfde operaties na elkaar staan. De volgende expressies geven bijvoorbeeld het correcte resultaat:
+        \begin{lstlisting}
+    1 + - 2 x 3 + 4  -> -1
+    1 x - 2 + 3 x 4  -> 10
+    2 x 2 x 2 x 2    -> 16
+    waarachtig tevens waarachtig hetzij strijdig -> waarachtig
+    allesbehalve waarachtig tevens waarachtig    -> strijdig
+    strijdig hetzij strijdig hetzij waarachtig   -> waarachtig\end{lstlisting}
+    \item{\bf Unaire operatoren:} het verschil tussen de binaire en de unaire min-operator wordt herkend en de unaire operator kan gebruikt worden op alle expressies. Zo wordt het getal $-1$ geparsed als de unaire min-operator toegepast op de een literaal 1. Dit maakt het mogelijk om een min te plaatsen voor haakjes, variabelen en sensormetingen of de unaire en binaire min te combineren:
+        \begin{lstlisting}
+        - ( 1 + 1 ) -> -2
+        - 10 - - 10 -> 0
+        allesbehalve ( strijdig tevens waarachtig) -> waarachtig\end{lstlisting}
+    \item{\bf Vergelijkingen:} numerieke expressies kunnen vergeleken worden met elkaar en geven een boolean terug. Een vergelijking heeft de laagste precedentie.
+\end{description}
+        \begin{lstlisting}
+        1 overeenkomstig met 1                       -> waarachtig
+        1 + 2 x 3 significanter dan 1 x 2 + 3        -> waarachtig
+        allesbehalve ( 2 : 3 verschillend met 4 : 6) -> waarachtig  \end{lstlisting}
+
+\section{Voorbeeldprogramma's}
+\subsection{Politiewagen}
+Het eerste voorbeeldprogramma is simpel: doe een politiewagen na door de ledjes te doen knipperen. Als extraatje speelt er ook een sirene af.
+\lstinputlisting{programs/police.bs}
+Het programma werkt door eerst drie keer traag te flikkeren en vervolgens zeven keer ietsje sneller af te wisselen om daarna de cyclus te herhalen (in een oneindige lus).
+Hiervoor wordt een variabele \texttt{wissels} gebruikt waarin opgeslagen wordt hoeveel keer we nog moeten wisselen.
+
+Na iedere twee wissels (een lichtje wordt eerst blauw, daarna rood) wordt deze variabele gedecrementeerd.
+
+Of lichtjes snel of traag flikkeren wordt bepaald door hoe lang er gezongen wordt. Een geluid afspelen met de buzzer blokkeert namelijk de commando's zo lang er geluid afgespeeld wordt.
+\subsubsection{Hindernissenparcours}
+Als tweede voorbeeldprogramma probeert de robot rechtdoor te rijden en wanneer er een obstakel geregistreerd wordt door de sensors probeert de robot die te ontwijken.
+\lstinputlisting{programs/obstacle.bs}
+Ook hier zit het programma weer in een oneindige lus. Deze begint met het registreren van de sensorwaarde in de variabele \texttt{afstand}.
+
+Indien deze afstand groter is dan 20 is er niet metteen gevaar dat de robot ergens tegen botst. De robot gaat dan gewoon vooruit en de lichtjes worden op groen gezet.
+
+Indien deze afstand tussen 20 en 5 is moeten we een obstakel ontwijken. We sturen naar bakboord (links) en onze ledjes worden blauw. Er wordt even gewacht om de robot tijd te geven een redelijke hoeveelheid te draaien.
+
+Indien de afstand kleinder dan 5 is zitten we heel dicht bij een obstakel. Dan in het gewoon het beste om een paar stappen terug te nemen. De lichtjes wisselen rood en wit af en er wordt achteruit gereden tot de sensors een afstand groter dan 20 registreren. Zo kan de robot terug wat dichter rijden om vervolgens naar links te draaien (omdat we dan terug een afstand tussen 20 en 5 hebben).
+
+\subsection{Lijn volgen}
+Als laatste voorbeeldprogramma probeert de robot een zwarte lijn op een witte achtergrond te volgen.
+\lstinputlisting{programs/follow.bs}
+Opnieuw maken we gebruik van een oneindige lus en beginnen we met twee variabelen te zetten: in \texttt{bakboord} wordt opgeslagen of de lijnsensors een zwarte lijn zien aan de linkerkant (die kant is dus niet wit), in \texttt{stuurboord} wordt opgeslagen of een lijn aan de rechterkant werd gevonden. De variabele \texttt{laatsteBakboord} zal bijhouden of we het laatst naar links of naar rechts zijn gedraaid.
+
+Indien beide kanten op de lijn zitten kunnen we gewoon vooruit gaan.
+
+Als de lijn enkel te zien is aan de linkerkant wordt er ook naar links gedraaid en wordt de variabele \texttt{laatsteBakboord} op \texttt{waarachtig} gezet. Als de lijn enkel te zien is aan de rechterkant wordt het omgekeerde gedaan.
+
+Indien beide kanten geen lijn zien wordt er gedraaid naar de kant waar het laatst een lijn werd gezien. Dus naar links wanneer \texttt{laatsteBakboord} op \texttt{waarachtig} staat en anders naar rechts.
+
+\section{Implementatie}
+
+\subsection{De parser}
+In {\tt Parser.hs} kunt de algemene parser-functies vinden. De parser is een kruising tussen de parser getoond in de slides en de parser zoals uitgewerkt in de paper \textit{Monadic Parsing in Haskell} (zoals vermeld bij de semantiek-bespreking van de expressies). Daarnaast heb ik ook enkele extra's toegevoegd, zo geeft de \texttt{parse}-functie (lijnnummer 122) een \texttt{Either Error a} terug (de definitie van Error staat op lijn 21). Zodat het falen van de parser mooi kan afgehandeld worden.
+
+Nog enkele noemenswaardige functies:
+\begin{description}
+    \item{\tt chooseFrom} (lijn 134) aanvaard een lijst van parsers en gaat de eerste gebruiken die succesvol is. Met deze functie worden lange reeksen van \texttt{ parserA <|> parserB <|> ...} vermeden.
+    \item{\tt parseStrTo} (lijn 173) neemt een lijst van tuples van een string en een ander item (bijvoorbeeld \texttt{("bakboordzijde", Portside)} en geeft een parser terug die het tweede item van de eerste tuple teruggeeft waarvan de string matcht.
+    \item{\tt chain} (lijn 187) deze functie maakt de magie van de expressies mogelijk. Deze is deels overgenomen van de eerder vermelde paper/tutorial (met nog een toevoeging). Er worden twee parsers meegegeven: een parser die een \texttt{Exp} parset en een parser die een binaire operator parset.
+        De functie begint met het parsen van een expressie en slaat die voorlopig op in de variabele \texttt{a}. Daarna wordt er geprobeerd om de binaire operator te parsen als \texttt{bif} en wordt er een recursieve oproep gedaan waarvan het resultaat opgeslagen wordt als \texttt{b}.
+
+        Lukt het niet om een binaire operator te parsen dan wordt enkel \texttt{a} gereturned. Lukt dit wel dan wordt de expressie teruggegeven die de binaire functie toegepast op \texttt{a} en \texttt{b} voorsteld. De recursieve oproep zorgt ervoor dat het tweede operand een expressie met een hogere precedentie kan zijn, of nogmaals een binaire operator toegepast op een expressie. Hierdoor kan \texttt{1 + 1} geparsed worden, maar ook \texttt{ 1 + 1 + 1 + 1}. Deze recursieve stap is een toevoeging op de functie in de vermelde paper.
+
+        Deze functie kunt u in actie zien vanaf lijn 237, daar begin ik met het 'chain'-en van expressies met de laagste expressie en ga dan telkens een niveau hoger tot ik uitkom bij literalen, variabelen ...
+    \item{\tt parseStatements} (lijn 436). Het parsen van een statement begint met deze functie en vanaf daar splitst iedere parser zich op in kleinere deelparsers. Zo zal deze parser proberen om \texttt{parseStat} op te roepen die op zijn beurt opsplitst in \texttt{parseComment}, \texttt{parseAssign}, ... Wanneer het niet lukt om één of meer statements te parsen wordt een lege lijst teruggegeven. Dit maakt het mogelijk om recursief te werken en zorgt er ook voor dat een programma of bok code zonder statements ook een geldig programma is.
+\end{description}
+In \texttt{Parser.hs} staan de gemeenschappelijke parser-functies en hulpfuncties. Daarnaast zijn er nog de specifieke bestanden \texttt{ExpressionParser.hs} (lijn 197), \texttt{CommandParser.hs} (lijn 320) en \texttt{StatementParser.hs} (lijn 422) waarin de specifieke parsers staan.
+
+\subsection{Evaluators}
+Er zijn drie verschillende 'Evaluators', dit zijn combinaties van transformer monads die elk specifieke delen van het programma uitvoeren. hier volgt hun definitie en hun \texttt{run}-functie:
+\begin{lstlisting}
+type CmdEval  a = ReaderT Device IO a
+type ExpEval  a = ReaderT ExpEnv ( ExceptT Error IO ) a
+type StatEval a = ReaderT StatEnv ( ExceptT Error ( StateT VarMap IO )) a
+
+runCmdEval :: Device -> CmdEval a -> IO a
+runCmdEval dev eval = runReaderT eval dev
+
+runExpEval :: ExpEnv -> ExpEval a -> IO (Either Error a)
+runExpEval env eval = runExceptT $ runReaderT eval env
+
+runStatEval :: StatEnv -> VarMap -> StatEval a -> IO (Either Error a, VarMap)
+runStatEval env vm eval = runStateT ( runExceptT $ runReaderT eval env ) vm\end{lstlisting}
+
+\begin{description}
+    \item{\tt CommandEvaluator} (lijn 571): dit is de simpelste evaluator. Deze stuurt de MBot aan en daarvoor wordt de \texttt{Device}-handle van de MBot meegegeven in een \texttt{ReaderT}. Dit is een monad die een read-only variabele aanbied die kan opgevraagd worden met \texttt{ask}.
+    \item{\tt ExpressionEvaluator} (lijn 499): deze evaluator zal expressies uitvoeren. De \texttt{ExpEnv} bestaat uit het tuple \texttt{(Device, VarMap)} en deze wordt ook weer meegegeven in een \texttt{ReaderT}. De evaluatie kan ook falen (bijvoorbeeld wanneer er zich een \texttt{TypeFout} voordoet) en daarom zit het resultaat in een \texttt{ExcepT}.
+
+        De \texttt{VarMap} is een \texttt{HashMap} die de namen van variabelen (strings) afbeeldt op hun waarde. De reden waarom deze read-only wordt meegegeven met de \texttt{ReaderT} is omdat expressies zelf de variabelen niet gaan aanpassen (en dit ook niet zouden mogen kunnen doen). Dit is de verantwoordelijkheid van de volgende evaluator.
+    \item{\tt StatementEvaluator} (lijn 611):
+        Deze evaluator is het meest ingewikkeld maar heeft ook als verantwoordelijkheid om de andere evaluators op te roepen waar nodig.
+
+        In de \texttt{ReaderT} wordt een tuple \texttt{(Device, MVar Bool)} meegegeven. De \texttt{Device}-handle is logisch. De \texttt{MVar Bool} wordt meegegeven om het uitvoeren vroegtijdig te stoppen indien nodig, maar info daarover volgt later.
+
+        In de \texttt{StateT} wordt de \texttt{VarMap} meegegeven, die in het begin van het programma leeg is. Bij iedere \texttt{Assign} statement wordt de state aangepast: er wordt een variabele toegevoegd of aangepast in die \texttt{VarMap}. De \texttt{Conditonal}, \texttt{Loop} en \texttt{Assign} statements kunnen vervolgens deze map meegeven met de expressies die ze moeten evalueren.
+
+        De \texttt{ExcepT} zorgt er hier ook weer voor dat we foutmeldingen kunnen afhandelen. Foutmeldingen die voorkomen tijdens het evalueren van expressies worden automatisch doorgegeven aan deze monad (en de uitvoering wordt ook afgebroken). De \texttt{Right} van zal in dit geval meestal gewoon de unit \texttt{()} zijn, omdat de evaluatie van het programma geen resultaat teruggeeft.
+\end{description}
+
+\subsection{GebruikersOnderbreking}
+Veel programma's gebruiken oneindige loops (\texttt{Gedurende waarachtig doe: ...}). Maar op een bepaald moment zouden we die toch graag afsluiten. Daarom heb ik ervoor gezorgd dat de signalen \texttt{SIGINT} en \texttt{SIGTERM} worden opgevangen en de executie wordt gestopt. Dit wordt gedaan door handlers te installeren (vanaf lijn 746) die een \texttt{MVar Bool} die initieel op \texttt{False} staat op \texttt{True} zetten wanneer zo'n signaal wordt opgevangen. De reden waarom dit een \texttt{MVar} is, is omdat deze handlers asynchroon worden verwerkt.
+
+Bij het verwerken van een lijst statements (lijn 657) wordt er voor het evalueren van iedere statement gekeken of deze \texttt{MVar Bool} nog steeds \texttt{False} is. Indien dit niet het geval is wordt een error gegooid waardoor de uitvoering stopt.
+
+Dit heeft als bijkomend voordeel dat de motoren van de MBot ook gestopt worden omdat vlak voor het sluiten van de verbinding met de MBot (lijn 758) er nog eens een \texttt{stop} commando wordt gestuurd naar de MBot. Moest dit signaal niet opgevangen worden, dan wordt het programma direct getermineerd en blijft de robot gewoon verder rijden in dezelfde richting.
+
+\subsection{Het typesysteem}
+Een \texttt{Value} (lijn 29) is een tuple \texttt{(Number, Type)} waar \texttt{Number} een double is. Zo kan er nog altijd aan typechecking gedaan worden, maar is alles intern nog altijd een nummer. Booleans worden dan voorgesteld door de waarden \texttt{(1.0, BoolT)} voor \texttt{waarachtig} en \texttt{(0.0, BoolT)} voor \texttt{strijdig}.
+
+Expressies worden tijdens de uitvoering gecontroleerd of ze voldoen aan het verwachte type (bijvoorbeeld door \texttt{evalAndCheck} op lijn 535). Indien een expressie niet het verwachte type oplevert wordt er een \texttt{TypeFout} opgeworpen.
+
+Deze oplossing is niet de meest elegante, maar na een eindje prutsen was dit het eerste die goed werkte en voor de gebruiker relatief onzichtbaar was.
+
+\subsection{Muziek}
+Om de buzzer van de MBot aan te sturen heb ik een patch opgestuurd naar de professor. Deze patch bestaat uit de toevoeging van de volgende functie:
+\begin{lstlisting}[language=Haksell]
+playTone freq time = let (highFreq, lowFreq) = shortToBytes freq
+                         (highTime, lowTime) = shortToBytes time
+                        -- There is no port value. Instead, the least
+                        -- signifcant byte of the frequency-value is
+                        -- stored there.
+                        -- Something something little-endian?
+                        in MBotCommand idx RUN TONE
+                            lowFreq [highFreq, lowTime, highTime]
+                        where -- Split a short into a tuple of two bytes
+                        shortToBytes i = (shiftR i 8, i)
+\end{lstlisting}
+Het heeft eventjes geduurd voor ik door had hoe de MBot API precies werkt en hoe de data precies doorgestuurd moet worden. Uiteindelijk komt het er op neer dat twee shorts (16 bits) moeten doorgestuurd worden: eerst de frequentie en vervolgens de duratie. Van deze shorst moet eerst de minst significante byte doorgesturd worden en vervolgens de meest significante byte: de MBot is waarschijnlijk little-endian.
+
+Een minpuntje van deze functie is dat ze slechts afloopt wanneer de MBot zijn geluid volledig heeft afgespeeld.
+\section{Conclusie}
+De programmeertaal \texttt{BurgieScript} is een taal die kan gebruikt worden om de MBot aan te sturen. Er is een flexibele ondersteuning voor mathematische en boolese expressies en de flow van het programma kan gemakkelijk bepaald worden doormiddel van een while-lus en een if/else statement. Daarnaast worden (sommige) fouten meegedeeld aan de gebruiker, maar er is nog ruimte voor verbetering.
+
+Wat er nog kan verbeterd of toegevoegd worden:
+
+\begin{itemize}
+    \item Het typesysteem kon misschien wat properder door de types die intern worden gebruikt ook te laten overeenkomen met de types die ze moeten voorstellen.
+    \item Een uitgebreidere manier om muziek af te spelen. Het originele plan was een commando toe te voegen als \texttt{speelMuziek} waar een bestand kon aan meegegeven worden waarin muziek stond (een mp3, of eventueel gewoon een csv bestand met op iedere lijn de frequentie gevolgd door de duratie van een noot) zodat tijdens het uitvoeren van een programma de robot ook muziek zou afspelen. Helaas was er niet echt tijd meer om dit te implementeren. Het ging ook geen makkelijke opdracht zijn: de muziek zou parallel moeten afspelen met de executie van het programma, maar omdat zowel het programma als de achtergrondmuziek de MBot-connectie moeten delen zouden hier nog problemen mee kunnen ontstaan.
+    \item Een interactieve mogelijkheid, zodat zoals met GHCi, commando's interactief kunnen uitgevoerd worden.
+    \item De optie om een dummyrobot te gebruiken, zodat er geen connectie met een werkelijke robot nodig is.
+    \item Duidelijkere foutmeldingen bij het parsen. Op dit moment zegt de parser vanaf welk punt er niet meer kon geparsed worden. Indien de foutieve statement in een blok zit van een andere statement (bijvoorbeeld van een while-lus) dan faalt eigenlijk ook de ouder-statement. Hierdoor lijkt het alsof de parser al faalt bij deze while-lus, terwijl de échte fout verder in het programma zit. Een oplosing voor dit probleem zou kunnen zijn door in de parsers zelf foutmeldingen te genereren.
+    \item Toevoegen van tests. Ik was begonnen met unit-tests te schrijven met HUnit, maar heb die dan weer verwijderd om over te schakelen op QuickCheck. Hier was er helaas geen tijd meer voor.
+\end{itemize}
+Over het algemeen ben ik wel redelijk tevreden met mijn resultaat. De taal kan het meeste wat ik wou bereiken en ik heb het gevoel dat de kwaliteit van de code nog goed meevalt. Er kroop veel tijd in (of misschien heb ik er net iets teveel tijd in gestoken), maar het was een leuk project om te maken. Ik zal met pijn in het hart afscheid nemen van de MBot.
+
+
+\newpage
+\newgeometry{margin=1in}
+\section{Appendix: broncode}
+\lstset{language=Haksell, numbers=left}
+\lstinputlisting{Definitions.hs}
+\lstset{firstnumber=last}
+\lstinputlisting{Parser.hs}
+\lstinputlisting{ExpressionParser.hs}
+\lstinputlisting{CommandParser.hs}
+\lstinputlisting{StatementParser.hs}
+\lstinputlisting{ExpressionEvaluator.hs}
+\lstinputlisting{CommandEvaluator.hs}
+\lstinputlisting{StatementEvaluator.hs}
+\lstinputlisting{Main.hs}
+\end{document}
